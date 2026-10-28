@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Plataforma Comercial AgroFinder kAb</title>
+    <!-- Tailwind CSS y Leaflet Maps -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <style>
+        #map { height: 260px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+        .pulse-normal { animation: pulse-green 2s infinite; }
+        .pulse-alert { animation: pulse-red 0.8s infinite; }
+        @keyframes pulse-green {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.9; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        input, select, button { font-size: 16px !important; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between font-sans antialiased">
+
+    <!-- CABECERA -->
+    <header class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl">🐾</span>
+                <div>
+                    <h1 class="font-bold text-lg text-sky-400 leading-none">AgroFinder kAb</h1>
+                    <span class="text-xs text-slate-400">Sincronización Cloud</span>
+                </div>
+            </div>
+            <div id="user-badge" class="hidden text-xs bg-slate-800 border border-slate-700 text-sky-400 px-3 py-1 rounded-full font-semibold"></div>
+        </div>
+    </header>
+
+    <!-- CONTENEDOR PRINCIPAL -->
+    <main class="flex-grow p-4 flex items-center justify-center">
+        <div class="w-full max-w-md mx-auto">
+
+            <!-- 1. PANTALLA DE INICIO DE SESIÓN -->
+            <div id="view-login" class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-sky-500/10 border border-sky-500/30 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                        <span class="text-3xl">☁️</span>
+                    </div>
+                    <h2 class="text-xl font-bold text-white">Iniciar Sesión IoT</h2>
+                    <p class="text-xs text-slate-400 mt-1">Conectado a Firebase Realtime</p>
+                </div>
+
+                <form onsubmit="handleLogin(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Usuario</label>
+                        <input type="text" id="input-user" required placeholder="admin1 o user1"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-sky-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Contraseña</label>
+                        <input type="password" id="input-pass" required placeholder="••••••••"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-sky-500">
+                    </div>
+                    <div id="login-error" class="hidden text-red-400 text-xs bg-red-500/10 border border-red-500/20 p-3 rounded-xl text-center">
+                        Usuario o contraseña incorrectos.
+                    </div>
+                    <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-sky-600/20">
+                        Ingresar a la Plataforma
+                    </button>
+                </form>
+            </div>
+
+            <!-- 2. PANORAMA DEL ADMINISTRADOR (admin1) -->
+            <div id="view-admin" class="hidden space-y-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-sky-400">Panel Admin Cloud</h2>
+                        <span class="text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-md font-mono">En Línea</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-4">Cualquier cambio se sincronizará al instante en los dispositivos remotos:</p>
+
+                    <div class="space-y-3">
+                        <button onclick="setCloudMode('norm')" id="btn-mode-norm"
+                            class="w-full bg-slate-950 border border-slate-800 text-left p-4 rounded-xl flex items-center justify-between transition-all">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">1</div>
+                                <div>
+                                    <div class="font-bold text-sm text-white">Ritmo Normal</div>
+                                    <div class="text-xs text-slate-400">70 - 85 BPM</div>
+                                </div>
+                            </div>
+                            <span id="badge-norm" class="hidden text-xs bg-emerald-500 text-slate-950 font-bold px-2 py-1 rounded">ACTIVO</span>
+                        </button>
+
+                        <button onclick="setCloudMode('alt')" id="btn-mode-alt"
+                            class="w-full bg-slate-950 border border-slate-800 text-left p-4 rounded-xl flex items-center justify-between transition-all">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold">2</div>
+                                <div>
+                                    <div class="font-bold text-sm text-white">Ritmo Acelerado</div>
+                                    <div class="text-xs text-slate-400">105 - 130 BPM</div>
+                                </div>
+                            </div>
+                            <span id="badge-alt" class="hidden text-xs bg-amber-500 text-slate-950 font-bold px-2 py-1 rounded">ACTIVO</span>
+                        </button>
+
+                        <button onclick="setCloudMode('off')" id="btn-mode-off"
+                            class="w-full bg-slate-950 border border-slate-800 text-left p-4 rounded-xl flex items-center justify-between transition-all">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-lg bg-slate-700/20 border border-slate-700 flex items-center justify-center text-slate-400 font-bold">3</div>
+                                <div>
+                                    <div class="font-bold text-sm text-white">Apagar / Ritmo 0</div>
+                                    <div class="text-xs text-slate-400">0 BPM (Sin lectura)</div>
+                                </div>
+                            </div>
+                            <span id="badge-off" class="hidden text-xs bg-slate-600 text-white font-bold px-2 py-1 rounded">ACTIVO</span>
+                        </button>
+                    </div>
+                </div>
+                <button onclick="logout()" class="w-full bg-red-600/10 border border-red-500/20 text-red-400 font-bold py-3 rounded-xl text-sm">Cerrar Sesión</button>
+            </div>
+
+            <!-- 3. PANORAMA DEL USUARIO (user1) -->
+            <div id="view-user" class="hidden space-y-4">
+                <div id="card-bpm-container" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-bold text-slate-400 uppercase">Signos Vitales (Nube)</span>
+                        <span id="heart-icon" class="text-xl">❤️</span>
+                    </div>
+                    <div class="flex items-baseline space-x-3 my-2">
+                        <span id="display-bpm" class="text-5xl font-black text-sky-400">--</span>
+                        <span class="text-lg font-bold text-slate-400">BPM</span>
+                    </div>
+                    <div id="display-status-text" class="text-xs font-medium text-emerald-400 flex items-center space-x-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span>Sincronizado en tiempo real</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Ubicación GPS (Bogotá)</span>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <div class="text-xs text-white">📍 Dirección:</div>
+                        <div class="text-sm font-bold text-sky-400">Cl. 90a #95d-56, Bogotá</div>
+                        <div class="text-[11px] text-slate-500 mt-1 font-mono">Lat: 4.7118 | Lon: -74.1130</div>
+                    </div>
+                    <div id="map" class="border border-slate-800"></div>
+                </div>
+                <button onclick="logout()" class="w-full bg-slate-900 border border-slate-800 text-slate-400 font-bold py-3 rounded-xl text-sm">Cerrar Sesión</button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- PIE DE PÁGINA -->
+    <footer class="bg-slate-900 border-t border-slate-800 p-3 text-center text-[11px] text-slate-500">
+        Dispositivo AgroFinder kAb &bull; IoT Cloud Sync
+    </footer>
+
+    <!-- LÓGICA JAVASCRIPT -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Configuración de Firebase Cloud
+        const firebaseConfig = {
+            databaseURL: "https://agrofinder-kab-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database().ref('agrofinder/mode');
+
+        let mapInstance = null;
+        let markerInstance = null;
+        const TARGET_LAT = 4.7118;
+        const TARGET_LNG = -74.1130;
+        let currentCloudMode = 'norm';
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // Escuchar cambios en la nube en tiempo real para todos los dispositivos
+            dbRef.on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val) {
+                    currentCloudMode = val;
+                    updateAdminViewUI();
+                }
+            });
+
+            setInterval(updateHeartRateLoop, 2000);
+        });
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const user = document.getElementById('input-user').value.trim().toLowerCase();
+            const pass = document.getElementById('input-pass').value.trim();
+            const errorEl = document.getElementById('login-error');
+            errorEl.classList.add('hidden');
+
+            if (user === 'admin1' && pass === '12345678') {
+                showView('admin');
+                document.getElementById('user-badge').innerText = 'Admin Cloud';
+                document.getElementById('user-badge').classList.remove('hidden');
+                updateAdminViewUI();
+            } else if (user === 'user1' && pass === '1234') {
+                showView('user');
+                document.getElementById('user-badge').innerText = 'Usuario Cloud';
+                document.getElementById('user-badge').classList.remove('hidden');
+                setTimeout(initLeafletMap, 200);
+            } else {
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function showView(view) {
+            document.getElementById('view-login').classList.add('hidden');
+            document.getElementById('view-admin').classList.add('hidden');
+            document.getElementById('view-user').classList.add('hidden');
+            if (view === 'login') document.getElementById('view-login').classList.remove('hidden');
+            if (view === 'admin') document.getElementById('view-admin').classList.remove('hidden');
+            if (view === 'user') document.getElementById('view-user').classList.remove('hidden');
+        }
+
+        function logout() {
+            document.getElementById('input-user').value = '';
+            document.getElementById('input-pass').value = '';
+            document.getElementById('user-badge').classList.add('hidden');
+            showView('login');
+        }
+
+        // Enviar el cambio de modo a la nube de Firebase
+        function setCloudMode(mode) {
+            dbRef.set(mode);
+        }
+
+        function updateAdminViewUI() {
+            ['norm', 'alt', 'off'].forEach(m => {
+                const btn = document.getElementById(`btn-mode-${m}`);
+                const badge = document.getElementById(`badge-${m}`);
+                if (!btn) return;
+                btn.className = 'w-full bg-slate-950 border border-slate-800 text-left p-4 rounded-xl flex items-center justify-between transition-all';
+                badge.classList.add('hidden');
+            });
+
+            const activeBtn = document.getElementById(`btn-mode-${currentCloudMode}`);
+            const activeBadge = document.getElementById(`badge-${currentCloudMode}`);
+            if (activeBtn && activeBadge) {
+                if (currentCloudMode === 'norm') activeBtn.className = 'w-full bg-slate-900 border border-emerald-500 text-left p-4 rounded-xl flex items-center justify-between transition-all';
+                else if (currentCloudMode === 'alt') activeBtn.className = 'w-full bg-slate-900 border border-amber-500 text-left p-4 rounded-xl flex items-center justify-between transition-all';
+                else if (currentCloudMode === 'off') activeBtn.className = 'w-full bg-slate-900 border border-slate-500 text-left p-4 rounded-xl flex items-center justify-between transition-all';
+                activeBadge.classList.remove('hidden');
+            }
+        }
+
+        function initLeafletMap() {
+            if (!mapInstance) {
+                mapInstance = L.map('map', { zoomControl: true, attributionControl: false }).setView([TARGET_LAT, TARGET_LNG], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapInstance);
+                markerInstance = L.marker([TARGET_LAT, TARGET_LNG]).addTo(mapInstance).bindPopup('<b>Cl. 90a #95d-56, Bogotá</b>').openPopup();
+            } else {
+                mapInstance.invalidateSize();
+            }
+        }
+
+        function updateHeartRateLoop() {
+            const displayBpm = document.getElementById('display-bpm');
+            const statusText = document.getElementById('display-status-text');
+            const heartIcon = document.getElementById('heart-icon');
+            if (!displayBpm) return;
+
+            if (currentCloudMode === 'norm') {
+                displayBpm.innerText = Math.floor(Math.random() * 16) + 70;
+                displayBpm.className = 'text-5xl font-black text-emerald-400';
+                statusText.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Ritmo Normal (Nube)</span>';
+                heartIcon.className = 'text-xl pulse-normal';
+            } else if (currentCloudMode === 'alt') {
+                displayBpm.innerText = Math.floor(Math.random() * 26) + 105;
+                displayBpm.className = 'text-5xl font-black text-amber-400';
+                statusText.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span><span>Alerta: Ritmo Acelerado</span>';
+                heartIcon.className = 'text-xl pulse-alert';
+            } else if (currentCloudMode === 'off') {
+                displayBpm.innerText = '0';
+                displayBpm.className = 'text-5xl font-black text-slate-600';
+                statusText.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-600"></span><span>Apagado / 0 BPM</span>';
+                heartIcon.className = 'text-xl opacity-30';
+            }
+        }
+    </script>
+</body>
+</html>
+
